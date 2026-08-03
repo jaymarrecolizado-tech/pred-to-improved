@@ -1,0 +1,103 @@
+/* DICT R2 Travel Order — Filament panel overrides (light + dark) */
+
+:root {
+    --dict-navy: #0b1f3a;
+    --dict-blue: #1e4e8c;
+    --dict-surface: #f4f6f9;
+    --dict-danger: #c8102e;
+    --dict-radius: 0.5rem;
+    --dict-font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body,
+.fi-body,
+.fi-simple-layout,
+.fi-main,
+.fi-sidebar,
+.fi-topbar {
+    font-family: var(--dict-font) !important;
+}
+
+/* Page surfaces */
+.fi-main,
+.fi-simple-main {
+    background-color: var(--dict-surface);
+}
+
+.dark .fi-main,
+.dark .fi-simple-main,
+.dark .fi-body {
+    background-color: #0b1220 !important;
+}
+
+.dark .fi-sidebar {
+    background-color: #111a2b !important;
+    border-color: #1c2a42 !important;
+}
+
+.dark .fi-topbar {
+    background-color: #111a2b !important;
+    border-color: #1c2a42 !important;
+}
+
+/* Density — tighter sections / tables / stats */
+.fi-section-content-ctn {
+    padding: 0.85rem 1rem !important;
+}
+
+.fi-ta-header-cell,
+.fi-ta-cell {
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+}
+
+.fi-wi-stats-overview-stat {
+    padding: 0.85rem 1rem !important;
+    border-radius: var(--dict-radius) !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.fi-wi-stats-overview-stat:hover {
+    transform: translateY(-1px);
+}
+
+.fi-btn,
+.fi-sidebar-item,
+.fi-topbar-item-button {
+    transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.fi-sidebar-item-button,
+.fi-sidebar-group-button {
+    border-radius: 0.4rem !important;
+}
+
+.fi-section,
+.fi-wi-stats-overview-stat,
+.fi-ta-ctn,
+.fi-modal-window {
+    border-radius: var(--dict-radius) !important;
+}
+
+/* Attachment chips (theme-aware) */
+.dict-attach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    margin: 4px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    background: #e8eef7;
+    border: 1px solid #b8c9e0;
+    color: #1e4e8c;
+}
+
+.dark .dict-attach-chip {
+    background: #1a2740;
+    border-color: #2d4060;
+    color: #9ec0ef;
+}

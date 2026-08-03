@@ -1,0 +1,10 @@
+<?php
+
+return [
+    'avatar_column' => 'avatar_url',
+    'disk' => env('FILESYSTEM_DISK', 'public'),
+    'visibility' => 'public',
+
+    'show_custom_fields' => false,
+    'custom_fields' => [],
+];
