@@ -46,7 +46,7 @@ class TravelOrderSubmitted extends Notification
             ->line('Travel Period: ' . $this->travelOrder->start_date->format('F j, Y') . ' to ' . $this->travelOrder->end_date->format('F j, Y'))
             ->line('Destination: ' . $destination)
             ->line('Funding Source: ' . $fundingSource)
-            ->line('Selected Vehicle: ' . ($this->travelOrder->vehicle ?? 'Pending Assignment'))
+            ->line('Selected Vehicle: ' . ($this->travelOrder->formattedVehicles() ?: 'Pending Assignment'))
             ->line('Purpose: ' . $this->travelOrder->purpose)
             ->line('Remarks: ' . $this->travelOrder->remarks)
             ->when(!empty($this->travelOrder->travelers), function (MailMessage $message) {

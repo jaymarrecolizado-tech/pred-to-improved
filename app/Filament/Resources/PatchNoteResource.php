@@ -18,6 +18,8 @@ class PatchNoteResource extends Resource
     protected static ?string $navigationIcon  = 'heroicon-o-rectangle-stack';
     protected static ?string $navigationLabel = 'Patch Notes';
     protected static ?string $pluralModelLabel = 'Patch Notes';
+    protected static ?string $navigationGroup = 'Settings';
+    protected static ?int $navigationSort = 99;
 
     /*
     |--------------------------------------------------------------------------

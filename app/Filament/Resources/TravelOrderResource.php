@@ -178,6 +178,7 @@ class TravelOrderResource extends Resource
                             ->helperText('Select multiple if applicable'),
 
                         Select::make('vehicle')
+                            ->multiple()
                             ->label('Vehicle')
                             ->options(function (callable $get) {
                                 $sources = TravelSource::all();
@@ -191,13 +192,13 @@ class TravelOrderResource extends Resource
                                 }
                                 return $options;
                             })
-                            ->searchable(),
+                            ->searchable()
+                            ->helperText('Select multiple if applicable'),
 
                         Forms\Components\CheckboxList::make('other_funds')
                             ->label('Additional Travel Expenses')
                             ->options([
                                 'actual'        => 'Actual Expenses',
-                                'incidental'    => 'Incidental Expenses',
                                 'per_diem'      => 'Per Diem',
                                 'official_time' => 'Official Time',
                                 'no_claim'      => 'No claim',

@@ -202,9 +202,14 @@ class ViewTravelApproval extends ViewRecord
                         Infolists\Components\TextEntry::make('travelOrder.vehicle')
                             ->label('Assigned Vehicle')
                             ->placeholder('No vehicle assigned')
+                            ->listWithLineBreaks()
+                            ->badge()
                             ->formatStateUsing(function ($state) {
-                                if (empty($state)) return 'No vehicle assigned';
-                                return str_replace('|', ' - ', $state);
+                                if (empty($state)) {
+                                    return 'No vehicle assigned';
+                                }
+
+                                return str_replace('|', ' - ', (string) $state);
                             })
                             ->icon('heroicon-o-truck'),
 

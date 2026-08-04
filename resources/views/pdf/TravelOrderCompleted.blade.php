@@ -163,7 +163,7 @@
                         <span class="checkbox-box">{{ !empty($travelOrder->vehicle) ? '✓' : '' }}</span> Vehicle
                     </div>
                     <div class="field-label">Vehicle:</div>
-                    <span class="field-val">{{ $travelOrder->vehicle ?? 'N/A' }}</span>
+                    <span class="field-val">{{ $travelOrder->formattedVehicles() ?: 'N/A' }}</span>
                 </div>
                 <div class="col col-60">
                     <div class="field-label">Funding Source:</div>

@@ -18,7 +18,7 @@ class TravelWorkflowResource extends Resource
     protected static ?string $model = TravelWorkflow::class;
     protected static ?string $navigationIcon  = 'heroicon-o-arrow-path';
     protected static ?string $navigationGroup = 'Settings';
-    protected static ?int    $navigationSort  = 1;
+    protected static ?int    $navigationSort  = 2;
 
     public static function getEloquentQuery(): Builder
     {

@@ -9,6 +9,7 @@ use App\Notifications\TravelOrderSubmitted;
 use App\Notifications\TravelOrderApproved;
 use App\Notifications\TravelOrderRejected;
 use App\Notifications\TravelOrderCompleted;
+use App\Notifications\TravelOrderParticipantNotified;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -189,6 +190,17 @@ class TravelOrderService
         } catch (\Exception $e) {
             Log::error('Failed to send bell notification: ' . $e->getMessage());
         }
+
+        foreach ($travelOrder->participantUsers() as $participant) {
+            try {
+                $participant->notify(new TravelOrderParticipantNotified($travelOrder));
+            } catch (\Exception $e) {
+                Log::error('Failed to send TravelOrderParticipantNotified email: ' . $e->getMessage(), [
+                    'travel_order_id' => $travelOrder->id,
+                    'participant_id'  => $participant->id,
+                ]);
+            }
+        }
     }
 
     public function approveStep(TravelApproval $approval): void
@@ -286,6 +298,19 @@ class TravelOrderService
                 Log::error('Failed to send TravelOrderCompleted email: ' . $e->getMessage(), [
                     'travel_order_id' => $travelOrder->id,
                 ]);
+            }
+
+            foreach ($travelOrder->participantUsers() as $participant) {
+                try {
+                    $participant->notify(
+                        new TravelOrderCompleted($travelOrder, $approval, forParticipant: true)
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Failed to send TravelOrderCompleted email to participant: ' . $e->getMessage(), [
+                        'travel_order_id' => $travelOrder->id,
+                        'participant_id'  => $participant->id,
+                    ]);
+                }
             }
 
             try {

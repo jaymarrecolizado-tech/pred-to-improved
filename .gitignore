@@ -54,3 +54,11 @@ Thumbs.db
 
 /app/graphify-out/
 
+# Cursor / agent / local scratch (never commit)
+/.cursor/
+/.claude/
+*.plan.md
+*_serve*.ps1
+mysql_start_out.txt
+/raw/
+

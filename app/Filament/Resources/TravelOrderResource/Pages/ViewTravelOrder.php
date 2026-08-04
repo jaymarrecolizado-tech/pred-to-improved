@@ -277,9 +277,16 @@ class ViewTravelOrder extends ViewRecord
                         Infolists\Components\TextEntry::make('vehicle')
                             ->icon('heroicon-o-truck')
                             ->label('Vehicle')
+                            ->placeholder('Not specified')
+                            ->listWithLineBreaks()
+                            ->badge()
                             ->formatStateUsing(function ($state) {
-                                if (!$state) return 'Not specified';
-                                $parts = explode('|', $state);
+                                if (empty($state)) {
+                                    return 'Not specified';
+                                }
+
+                                $parts = explode('|', (string) $state);
+
                                 return count($parts) === 2
                                     ? "{$parts[0]} - {$parts[1]}"
                                     : $state;

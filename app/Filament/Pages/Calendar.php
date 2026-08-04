@@ -69,13 +69,7 @@ class Calendar extends Page
                 ? implode(', ', array_filter($travel->travel_sources))
                 : ($travel->travel_sources ?? '—');
 
-            $vehicle = '—';
-            if ($travel->vehicle) {
-                $parts   = explode('|', $travel->vehicle);
-                $vehicle = count($parts) === 2
-                    ? $parts[0] . ' - ' . $parts[1]
-                    : $travel->vehicle;
-            }
+            $vehicle = $travel->formattedVehicles() ?: '—';
 
             $endDate = $travel->end_date
                 ? $travel->end_date->copy()->addDay()->format('Y-m-d')

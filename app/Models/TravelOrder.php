@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class TravelOrder extends Model
 {
@@ -41,6 +42,7 @@ class TravelOrder extends Model
             'travel_location' => 'array',
             'attachment'      => 'array',
             'travel_sources'  => 'array',
+            'vehicle'         => 'array',
             'status'          => 'string',
             'start_date'      => 'datetime',
             'end_date'        => 'datetime',
@@ -53,6 +55,61 @@ class TravelOrder extends Model
             'cancelled_at'    => 'datetime',
             'revised_at'      => 'datetime',
         ];
+    }
+
+    /**
+     * Human-readable vehicle labels (supports legacy string and multi-select array).
+     */
+    public function formattedVehicles(): string
+    {
+        $vehicles = $this->vehicle;
+
+        if (empty($vehicles)) {
+            return '';
+        }
+
+        if (!is_array($vehicles)) {
+            $vehicles = [$vehicles];
+        }
+
+        return collect($vehicles)
+            ->filter()
+            ->map(function ($vehicle) {
+                $parts = explode('|', (string) $vehicle);
+
+                return count($parts) === 2
+                    ? "{$parts[0]} - {$parts[1]}"
+                    : $vehicle;
+            })
+            ->implode(', ');
+    }
+
+    /**
+     * Other travelers with matching User accounts (excludes the requestor).
+     * Matched by case-insensitive trimmed name — travelers have no email field.
+     */
+    public function participantUsers(): Collection
+    {
+        $names = collect($this->travelers ?? [])
+            ->map(fn ($traveler) => trim((string) (is_array($traveler) ? ($traveler['name'] ?? '') : $traveler)))
+            ->filter()
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->values();
+
+        if ($names->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()
+            ->where('id', '!=', $this->user_id)
+            ->where(function ($query) use ($names) {
+                foreach ($names as $name) {
+                    $query->orWhereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)]);
+                }
+            })
+            ->get()
+            ->unique('id')
+            ->values();
     }
 
     public function user()
