@@ -2,16 +2,16 @@
 
 namespace App\Notifications;
 
-use App\Models\PatchNote;
+use App\Models\UserGuide;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
-class PatchNotePublished extends Notification
+class UserGuidePublished extends Notification
 {
     use Queueable;
 
     public function __construct(
-        public PatchNote $patchNote
+        public UserGuide $userGuide
     ) {}
 
     public function via(object $notifiable): array
@@ -22,10 +22,10 @@ class PatchNotePublished extends Notification
     public function toArray(object $notifiable): array
     {
         return [
-            'title'   => 'New Update: ' . $this->patchNote->version,
-            'message' => $this->patchNote->title,
-            'url'     => '/DICT/patch-notes',
-            'icon'    => 'heroicon-o-rectangle-stack',
+            'title' => 'User Guide updated',
+            'message' => $this->userGuide->title,
+            'url' => '/DICT/user-guide/' . $this->userGuide->id,
+            'icon' => 'heroicon-o-book-open',
         ];
     }
 }
