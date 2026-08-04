@@ -46,17 +46,19 @@ class TravelOrderParticipantNotified extends Notification
             ->line('Destination: ' . $destination)
             ->line('Purpose: ' . ($this->travelOrder->purpose ?? 'N/A'))
             ->line('')
-            ->line('This notice is for your information only. Approvers will be notified separately for signature routing.')
+            ->line('This notice is for your information only. Approvers are notified separately for signature routing. You will receive another email when this travel order is fully completed, including the official Travel Order PDF. You will not be emailed for each intermediate approval step.')
             ->action('View Travel Order', $viewUrl)
             ->line('Thank you.');
     }
 
     public function toArray(object $notifiable): array
     {
+        $toCode = $this->travelOrder->to_code ?? '(pending code)';
+
         return [
             'travel_order_id' => $this->travelOrder->id,
             'to_code' => $this->travelOrder->to_code,
-            'message' => 'You were included as a traveler on travel order ' . ($this->travelOrder->to_code ?? '(pending code)'),
+            'message' => 'You were included as a traveler on travel order ' . $toCode . '. You will get another email when it is fully completed (with the official PDF).',
             'url' => "/DICT/travel-orders/{$this->travelOrder->id}",
         ];
     }

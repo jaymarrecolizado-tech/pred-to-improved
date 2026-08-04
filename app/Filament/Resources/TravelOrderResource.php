@@ -560,10 +560,11 @@ class TravelOrderResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListTravelOrders::route('/'),
-            'create' => Pages\CreateTravelOrder::route('/create'),
-            'view'   => Pages\ViewTravelOrder::route('/{record}'),
-            'edit'   => Pages\EditTravelOrder::route('/{record}/edit'),
+            'index'   => Pages\ListTravelOrders::route('/'),
+            'create'  => Pages\CreateTravelOrder::route('/create'),
+            'preview' => Pages\PreviewTravelOrder::route('/{record}/preview'),
+            'view'    => Pages\ViewTravelOrder::route('/{record}'),
+            'edit'    => Pages\EditTravelOrder::route('/{record}/edit'),
         ];
     }
 }

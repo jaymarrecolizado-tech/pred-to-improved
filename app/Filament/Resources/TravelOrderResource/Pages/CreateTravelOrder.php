@@ -4,16 +4,21 @@ namespace App\Filament\Resources\TravelOrderResource\Pages;
 
 use App\Filament\Resources\TravelOrderResource;
 use App\Models\TravelOrder;
-use Filament\Actions;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
-use App\Services\TravelOrderService;
 
 class CreateTravelOrder extends CreateRecord
 {
     protected static string $resource = TravelOrderResource::class;
+
+    protected function getCreateFormAction(): Action
+    {
+        return parent::getCreateFormAction()
+            ->label('Save & review');
+    }
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
@@ -83,6 +88,6 @@ class CreateTravelOrder extends CreateRecord
 
     protected function getRedirectUrl(): string
     {
-        return $this->getResource()::getUrl('index');
+        return $this->getResource()::getUrl('preview', ['record' => $this->record]);
     }
 }

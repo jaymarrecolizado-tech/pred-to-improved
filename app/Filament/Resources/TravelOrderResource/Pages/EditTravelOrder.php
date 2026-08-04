@@ -12,6 +12,15 @@ class EditTravelOrder extends EditRecord
 {
     protected static string $resource = TravelOrderResource::class;
 
+    protected function getRedirectUrl(): string
+    {
+        if (in_array($this->record->status, ['DRAFT', 'FOR_REVISION'], true)) {
+            return $this->getResource()::getUrl('preview', ['record' => $this->record]);
+        }
+
+        return $this->getResource()::getUrl('view', ['record' => $this->record]);
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
         // Conflict check is skipped in revision mode - travel dates may be in the past
