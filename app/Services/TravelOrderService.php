@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TravelOrder;
 use App\Models\TravelApproval;
 use App\Models\TravelWorkflow;
+use App\Models\User;
 use App\Notifications\TravelOrderSubmitted;
 use App\Notifications\TravelOrderApproved;
 use App\Notifications\TravelOrderRejected;
@@ -584,5 +585,64 @@ class TravelOrderService
                 Log::error('Failed to send resubmit bell notification: ' . $e->getMessage());
             }
         }
+    }
+
+    /**
+     * Reassign the current PENDING approval step to a different user.
+     * Does not change already-approved stages.
+     */
+    public function reassignPendingApprover(TravelOrder $travelOrder, int $newApproverId): TravelApproval
+    {
+        $approval = $travelOrder->getCurrentApprovalStep();
+
+        if (!$approval) {
+            throw new \RuntimeException('There is no pending approval step to reassign.');
+        }
+
+        if ((int) $approval->approver_id === $newApproverId) {
+            return $approval;
+        }
+
+        $newApprover = User::findOrFail($newApproverId);
+
+        $approval->update([
+            'approver_id' => $newApprover->id,
+            'approver_name_snapshot' => null,
+            'approver_position_snapshot' => null,
+            'approver_signature_snapshot' => null,
+        ]);
+
+        $approval->refresh()->load('approver');
+        $travelOrder->loadMissing('user');
+
+        try {
+            $approval->approver->notify(
+                new TravelOrderSubmitted($travelOrder, $approval)
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to notify reassigned approver: ' . $e->getMessage(), [
+                'travel_order_id' => $travelOrder->id,
+                'approval_id' => $approval->id,
+                'approver_id' => $newApprover->id,
+            ]);
+        }
+
+        try {
+            Notification::make()
+                ->title('Travel Order Assigned to You')
+                ->warning()
+                ->icon('heroicon-o-document-text')
+                ->body("A travel order from {$travelOrder->user->name} requires your review.")
+                ->actions([
+                    Action::make('view')
+                        ->button()
+                        ->url(fn () => '/DICT/travel-approvals'),
+                ])
+                ->sendToDatabase($approval->approver);
+        } catch (\Exception $e) {
+            Log::error('Failed to send reassignment bell notification: ' . $e->getMessage());
+        }
+
+        return $approval;
     }
 }

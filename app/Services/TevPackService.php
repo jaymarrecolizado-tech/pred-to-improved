@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -36,7 +37,7 @@ class TevPackService
         $year = optional($travelOrder->start_date)->format('Y') ?: date('Y');
         $dest = $this->destinationSlug($travelOrder);
 
-        if ($travelOrder->status !== 'COMPLETED' || empty($travelOrder->to_code)) {
+        if (trim((string) ($travelOrder->to_code ?? '')) === '') {
             $dest = 'DRAFT';
         }
 
@@ -51,7 +52,10 @@ class TevPackService
         }
 
         $spreadsheet = IOFactory::load($path);
-        $travelOrder->loadMissing('user');
+        $this->clearBrokenUnparsedDrawings($spreadsheet);
+        if ($travelOrder->user_id) {
+            $travelOrder->loadMissing('user');
+        }
 
         $names = $this->travelerNames($travelOrder);
         $positions = $this->travelerPositions($travelOrder);
@@ -59,9 +63,7 @@ class TevPackService
         $purpose = trim((string) ($travelOrder->purpose ?? ''));
         $purposeParts = $this->splitPurpose($purpose);
         $station = $this->officialStation($travelOrder);
-        $toNo = ($travelOrder->status === 'COMPLETED' && $travelOrder->to_code)
-            ? $travelOrder->to_code
-            : 'Pending';
+        $toNo = $this->travelOrderNumber($travelOrder);
         $toDate = $this->toDateLabel($travelOrder);
         $destinations = $this->destinationList($travelOrder);
         $rows = $this->itineraryRows($travelOrder);
@@ -77,22 +79,27 @@ class TevPackService
             'rows' => $rows,
         ]);
 
-        $this->fillAppendix47($spreadsheet->getSheetByName('Appendix 47') ?? $spreadsheet->getSheet(1), [
+        $appendix = $spreadsheet->getSheetByName('Appendix 47') ?? $spreadsheet->getSheet(1);
+        $this->fillAppendix47($appendix, [
             'toNo' => $toNo,
             'toDate' => $toDate,
             'names' => $names,
             'destinations' => $destinations,
         ]);
 
-        $this->fillAfterTravelReport($spreadsheet->getSheetByName('After Travel Report') ?? $spreadsheet->getSheet(2), [
-            'toNo' => $toNo,
-            'toDate' => $toDate,
-            'dateRange' => $dateRange,
-            'names' => $names,
-            'positions' => $positions,
-            'destinations' => $destinations,
-            'purpose' => $purpose,
-        ]);
+        $this->fillAfterTravelReport(
+            $spreadsheet->getSheetByName('After Travel Report') ?? $spreadsheet->getSheet(2),
+            [
+                'toNo' => $toNo,
+                'toDate' => $toDate,
+                'dateRange' => $dateRange,
+                'names' => $names,
+                'positions' => $positions,
+                'destinations' => $destinations,
+                'purpose' => $purpose,
+            ],
+            $appendix
+        );
 
         return $spreadsheet;
     }
@@ -144,6 +151,8 @@ class TevPackService
         $sheet->setCellValue('I19', $data['toNo']);
         $sheet->setCellValue('U19', $data['toDate']);
         $sheet->setCellValue('T37', $data['names']);
+        $sheet->setCellValue('H22', 'X');
+        $sheet->getStyle('H22')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->setCellValue('H27', null);
         $evidence = 'TRAVEL ORDER, APPENDIX 45 & 47, CERTIFICATE OF APPEARANCE, ACCOMPLISHMENT REPORT.';
         $sheet->setCellValue('B31', $evidence);
@@ -153,8 +162,10 @@ class TevPackService
         );
     }
 
-    private function fillAfterTravelReport(Worksheet $sheet, array $data): void
+    private function fillAfterTravelReport(Worksheet $sheet, array $data, ?Worksheet $headerSource = null): void
     {
+        $this->applyDictHeader($sheet, $headerSource);
+
         $sheet->setCellValue('E14', 'After Travel Report');
         $sheet->setCellValue('E16', $data['dateRange']);
         $sheet->setCellValue(
@@ -169,6 +180,99 @@ class TevPackService
         $sheet->setCellValue('B32', 'Above stated activities were successfully undertaken.');
         $sheet->setCellValue('B41', $data['names']);
         $sheet->setCellValue('B42', $data['positions']);
+    }
+
+    private function travelOrderNumber(TravelOrder $travelOrder): string
+    {
+        $code = trim((string) ($travelOrder->to_code ?? ''));
+
+        return $code !== '' ? $code : 'Pending';
+    }
+
+    private function applyDictHeader(Worksheet $sheet, ?Worksheet $source = null): void
+    {
+        if ($this->hasDictHeader($sheet)) {
+            return;
+        }
+
+        $logo = resource_path('templates/dict-header.png');
+        if (!is_file($logo)) {
+            return;
+        }
+
+        $coordinates = 'A1';
+        $offsetX = 5;
+        $offsetY = 0;
+        $width = 710;
+        $height = 132;
+
+        if ($source) {
+            foreach ($source->getDrawingCollection() as $src) {
+                if (!$src instanceof Drawing) {
+                    continue;
+                }
+                $coordinates = $src->getCoordinates() ?: $coordinates;
+                $offsetX = $src->getOffsetX();
+                $offsetY = $src->getOffsetY();
+                $width = $src->getWidth() ?: $width;
+                $height = $src->getHeight() ?: $height;
+                break;
+            }
+        }
+
+        $drawing = new Drawing();
+        $drawing->setName('DICT Header');
+        $drawing->setDescription('DICT Region 02 letterhead');
+        $drawing->setPath($logo);
+        $drawing->setCoordinates($coordinates);
+        $drawing->setOffsetX($offsetX);
+        $drawing->setOffsetY($offsetY);
+        $drawing->setResizeProportional(false);
+        $drawing->setWidth($width);
+        $drawing->setHeight($height);
+        $drawing->setWorksheet($sheet);
+    }
+
+    private function hasDictHeader(Worksheet $sheet): bool
+    {
+        foreach ($sheet->getDrawingCollection() as $drawing) {
+            if (
+                $drawing->getName() === 'DICT Header'
+                || ($drawing instanceof Drawing && $drawing->getCoordinates() === 'A1')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The template kept drawing relationships for After Travel Report / Pictures
+     * that pointed at missing drawing XML. PhpSpreadsheet stores those as
+     * empty unparsed drawings and overwrites any header we add on save.
+     */
+    private function clearBrokenUnparsedDrawings(Spreadsheet $spreadsheet): void
+    {
+        $data = $spreadsheet->getUnparsedLoadedData();
+
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $code = $sheet->getCodeName();
+            $drawings = $data['sheets'][$code]['Drawings'] ?? [];
+            foreach ($drawings as $xml) {
+                if (!is_string($xml) || !str_contains($xml, '<root')) {
+                    continue;
+                }
+
+                unset(
+                    $data['sheets'][$code]['Drawings'],
+                    $data['sheets'][$code]['drawingOriginalIds']
+                );
+                break;
+            }
+        }
+
+        $spreadsheet->setUnparsedLoadedData($data);
     }
 
     private function itineraryRows(TravelOrder $travelOrder): array
