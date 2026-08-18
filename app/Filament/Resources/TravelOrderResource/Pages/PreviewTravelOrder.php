@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TravelOrderResource\Pages;
 
 use App\Filament\Resources\TravelOrderResource;
+use App\Services\TevPackService;
 use App\Services\TravelOrderService;
 use Filament\Actions;
 use Filament\Notifications\Notification;
@@ -98,6 +99,12 @@ class PreviewTravelOrder extends ViewRecord
 
                     $this->redirect(TravelOrderResource::getUrl('view', ['record' => $this->record]));
                 }),
+
+            Actions\Action::make('download_tev')
+                ->label('Download sample TEV')
+                ->icon('heroicon-o-table-cells')
+                ->color('gray')
+                ->action(fn () => app(TevPackService::class)->download($this->record)),
 
             Actions\Action::make('edit')
                 ->label('Edit')

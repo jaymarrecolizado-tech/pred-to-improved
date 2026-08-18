@@ -62,3 +62,7 @@ Thumbs.db
 mysql_start_out.txt
 /raw/
 
+# Local Composer / sample TEV (do not commit)
+/composer.phar
+/References/
+

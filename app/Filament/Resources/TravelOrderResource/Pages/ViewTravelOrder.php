@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TravelOrderResource\Pages;
 
 use App\Filament\Resources\TravelOrderResource;
+use App\Services\TevPackService;
 use App\Services\TravelOrderService;
 use Filament\Actions;
 use Filament\Forms;
@@ -53,6 +54,16 @@ class ViewTravelOrder extends ViewRecord
                         echo $pdf->output();
                     }, $fileName);
                 }),
+
+            Actions\Action::make('download_tev')
+                ->label(fn () =>
+                    $this->record->status === 'COMPLETED'
+                        ? 'Download TEV'
+                        : 'Download sample TEV'
+                )
+                ->icon('heroicon-o-table-cells')
+                ->color('gray')
+                ->action(fn () => app(TevPackService::class)->download($this->record)),
 
             Actions\Action::make('resubmit')
                 ->label('Resubmit for Approval')
