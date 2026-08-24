@@ -21,6 +21,22 @@ class ViewTravelApproval extends ViewRecord
                 ->color('warning')
                 ->url($this->getResource()::getUrl('index')),
 
+            Actions\Action::make('view_pdf')
+                ->label('View PDF')
+                ->icon('heroicon-o-eye')
+                ->color('gray')
+                ->modalHeading('Travel Order Preview')
+                ->modalContent(fn($record) =>
+                    view('filament.modals.pdf-preview', [
+                        'url' => route('travel-orders.preview-pdf', [
+                            'order' => $record->travel_order_id,
+                        ]),
+                    ])
+                )
+                ->modalWidth('7xl')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Close'),
+
             Actions\Action::make('download_pdf')
                 ->label('PDF')
                 ->icon('heroicon-o-document-arrow-down')
@@ -202,14 +218,9 @@ class ViewTravelApproval extends ViewRecord
                         Infolists\Components\TextEntry::make('travelOrder.vehicle')
                             ->label('Assigned Vehicle')
                             ->placeholder('No vehicle assigned')
-                            ->listWithLineBreaks()
-                            ->badge()
                             ->formatStateUsing(function ($state) {
-                                if (empty($state)) {
-                                    return 'No vehicle assigned';
-                                }
-
-                                return str_replace('|', ' - ', (string) $state);
+                                if (empty($state)) return 'No vehicle assigned';
+                                return str_replace('|', ' - ', $state);
                             })
                             ->icon('heroicon-o-truck'),
 
@@ -275,11 +286,6 @@ class ViewTravelApproval extends ViewRecord
                                 if ($files->isEmpty()) return '<em style="color:#9ca3af;">No attachments</em>';
 
                                 return $files->map(function ($path) {
-                                    /*
-                                     * Encode each path segment individually to handle
-                                     * filenames with spaces or special characters.
-                                     * Preserves the directory separator slash.
-                                     */
                                     $encodedPath = implode('/', array_map(
                                         'rawurlencode',
                                         explode('/', rawurldecode($path))
@@ -289,7 +295,7 @@ class ViewTravelApproval extends ViewRecord
                                     $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                                     $icon = in_array($ext, ['jpg', 'jpeg', 'png', 'gif']) ? '🖼️' : '📄';
 
-                                    return "<a href=\"{$url}\" target=\"_blank\" class=\"dict-attach-chip\">
+                                    return "<a href=\"{$url}\" target=\"_blank\" style=\"display:inline-flex;align-items:center;gap:6px;padding:8px 14px;margin:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1d4ed8;text-decoration:none;font-size:13px;font-weight:500;\">
                                         {$icon} {$name}
                                     </a>";
                                 })->implode('');
