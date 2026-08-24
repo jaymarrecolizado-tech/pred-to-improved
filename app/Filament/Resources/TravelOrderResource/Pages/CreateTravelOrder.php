@@ -4,90 +4,131 @@ namespace App\Filament\Resources\TravelOrderResource\Pages;
 
 use App\Filament\Resources\TravelOrderResource;
 use App\Models\TravelOrder;
-use Filament\Actions\Action;
+use App\Models\Employee;
+use App\Services\TravelOrderService;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Actions\Action;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
 
 class CreateTravelOrder extends CreateRecord
 {
     protected static string $resource = TravelOrderResource::class;
 
-    protected function getCreateFormAction(): Action
+    public bool $submitAfterSave = false;
+
+    protected function getRedirectUrl(): string
     {
-        return parent::getCreateFormAction()
-            ->label('Save & review');
+        return $this->getResource()::getUrl('index');
+    }
+
+    protected function getFormActions(): array
+    {
+        return [
+            Action::make('saveAsDraft')
+                ->label('Save as Draft')
+                ->icon('heroicon-o-document')
+                ->color('gray')
+                ->action(function () {
+                    $this->submitAfterSave = false;
+                    $this->create();
+                }),
+
+            Action::make('submitForApproval')
+                ->label('Submit for Approval')
+                ->icon('heroicon-o-paper-airplane')
+                ->color('success')
+                ->requiresConfirmation()
+                ->modalHeading('Submit Travel Order')
+                ->modalDescription('Your travel order will be submitted for approval immediately. Make sure all details are correct.')
+                ->action(function () {
+                    $this->submitAfterSave = true;
+                    $this->create();
+                }),
+
+            Action::make('cancel')
+                ->label('Cancel')
+                ->icon('heroicon-o-x-mark')
+                ->color('danger')
+                ->url($this->getResource()::getUrl('index'))
+                ->outlined(),
+        ];
+    }
+
+    protected function afterCreate(): void
+    {
+        if ($this->submitAfterSave) {
+            $this->record->update([
+                'status'       => 'SUBMITTED',
+                'submitted_at' => now(),
+            ]);
+
+            app(TravelOrderService::class)->createApprovals($this->record);
+
+            Notification::make()
+                ->title('Travel Order Submitted')
+                ->success()
+                ->body('Your travel order has been submitted for approval.')
+                ->send();
+        }
     }
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['user_id'] = Auth::id();
-        $data['status'] = 'DRAFT';
+        $data['user_id'] = auth()->id();
+        $data['status']  = 'DRAFT';
 
-        // Check each selected traveler for overlapping travel orders on the same dates
-        $this->validateTravelersForConflicts($data);
+        $travelers = $data['travelers'] ?? [];
 
-        // Keep employee_id for conflict detection; drop UI-only helper fields
-        if (isset($data['travelers'])) {
-            foreach ($data['travelers'] as &$traveler) {
-                unset($traveler['info']);
+        foreach ($travelers as $index => $traveler) {
+            if (!empty($traveler['employee_id'])) {
+                $employee = Employee::with('division')->find($traveler['employee_id']);
+                if ($employee) {
+                    $travelers[$index]['employee_id'] = (int) $traveler['employee_id'];
+                    $travelers[$index]['name']        = $employee->full_name;
+                    $travelers[$index]['position']    = $employee->position;
+                    $travelers[$index]['division']    = $employee->division?->name;
+                }
             }
-            unset($traveler);
+            unset($travelers[$index]['info']);
         }
+
+        $data['travelers'] = $travelers;
 
         return $data;
     }
 
-    /**
-     * Validate that no traveler has a conflicting travel order
-     * Throws an exception if conflicts are found
-     */
-    protected function validateTravelersForConflicts(array $data): void
+    protected function beforeCreate(): void
     {
-        if (!isset($data['travelers']) || empty($data['travelers'])) {
-            return;
-        }
 
-        $startDate = $data['start_date'];
-        $endDate = $data['end_date'];
-        $conflicts = [];
+        if (auth()->user()->isSuperAdmin()) return;
 
-        foreach ($data['travelers'] as $traveler) {
-            if (!isset($traveler['employee_id']) || !$traveler['employee_id']) {
-                continue;
+        $data      = $this->form->getState();
+        $travelers = $data['travelers'] ?? [];
+
+        foreach ($travelers as $traveler) {
+            $employeeId = $traveler['employee_id'] ?? null;
+            if (!$employeeId) continue;
+
+            $hasConflict = TravelOrder::hasConflictingTravelOrder(
+                $employeeId,
+                $data['start_date'],
+                $data['end_date'],
+            );
+
+            if ($hasConflict) {
+                $employee = Employee::find($employeeId);
+                Notification::make()
+                    ->title('Scheduling Conflict')
+                    ->danger()
+                    ->body(
+                        ($employee?->full_name ?? 'A traveler') .
+                        ' already has an approved or pending travel order during this period.'
+                    )
+                    ->persistent()
+                    ->send();
+
+                $this->halt();
             }
-
-            $employeeId = $traveler['employee_id'];
-
-            // Query existing non-cancelled orders that overlap with the requested travel period
-            if (TravelOrder::hasConflictingTravelOrder($employeeId, $startDate, $endDate)) {
-                $conflictingOrders = TravelOrder::getConflictingTravelOrders($employeeId, $startDate, $endDate);
-
-                $employeeName = $traveler['name'] ?? 'Employee ID: ' . $employeeId;
-                $conflictDates = $conflictingOrders->map(function ($order) {
-                    return $order->start_date->format('M d, Y') . ' - ' . $order->end_date->format('M d, Y');
-                })->join(', ');
-
-                $conflicts[] = "{$employeeName} already has a travel order for: {$conflictDates}";
-            }
         }
-
-        if (!empty($conflicts)) {
-            Notification::make()
-                ->title('Conflicting Travel Orders Found')
-                ->body('The following personnel cannot be added: ' . implode('; ', $conflicts))
-                ->danger()
-                ->send();
-
-            throw ValidationException::withMessages([
-                'travelers' => 'One or more travelers already have travel orders for the specified dates.'
-            ]);
-        }
-    }
-
-    protected function getRedirectUrl(): string
-    {
-        return $this->getResource()::getUrl('preview', ['record' => $this->record]);
     }
 }
