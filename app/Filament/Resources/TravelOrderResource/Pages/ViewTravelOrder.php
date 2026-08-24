@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TravelOrderResource\Pages;
 
 use App\Filament\Resources\TravelOrderResource;
+use App\Models\User;
 use App\Services\TevPackService;
 use App\Services\TravelOrderService;
 use Filament\Actions;
@@ -64,6 +65,55 @@ class ViewTravelOrder extends ViewRecord
                 ->icon('heroicon-o-table-cells')
                 ->color('gray')
                 ->action(fn () => app(TevPackService::class)->download($this->record)),
+
+            Actions\Action::make('change_pending_approver')
+                ->label('Change pending approver')
+                ->icon('heroicon-o-user-plus')
+                ->color('warning')
+                ->visible(fn () =>
+                    auth()->user()?->isAdmin()
+                    && $this->record->getCurrentApprovalStep()
+                )
+                ->form([
+                    Forms\Components\Placeholder::make('current_approver')
+                        ->label('Current pending approver')
+                        ->content(fn () => $this->record->getCurrentApprovalStep()?->approver?->name ?? '—'),
+                    Forms\Components\Select::make('approver_id')
+                        ->label('New approver')
+                        ->options(function () {
+                            $currentId = $this->record->getCurrentApprovalStep()?->approver_id;
+
+                            return User::query()
+                                ->orderBy('name')
+                                ->when($currentId, fn ($q) => $q->where('id', '!=', $currentId))
+                                ->pluck('name', 'id');
+                        })
+                        ->searchable()
+                        ->required(),
+                ])
+                ->requiresConfirmation()
+                ->modalHeading('Change pending approver')
+                ->modalDescription('Only the current PENDING stage is updated. Already-approved stages stay as they are. The new approver will be notified.')
+                ->action(function (array $data) {
+                    try {
+                        $approval = app(TravelOrderService::class)
+                            ->reassignPendingApprover($this->record, (int) $data['approver_id']);
+
+                        Notification::make()
+                            ->title('Pending approver updated')
+                            ->success()
+                            ->body('This stage is now assigned to ' . $approval->approver->name . '.')
+                            ->send();
+
+                        $this->record->refresh()->load('approvals.approver');
+                    } catch (\Throwable $e) {
+                        Notification::make()
+                            ->title('Could not change approver')
+                            ->danger()
+                            ->body($e->getMessage())
+                            ->send();
+                    }
+                }),
 
             Actions\Action::make('resubmit')
                 ->label('Resubmit for Approval')

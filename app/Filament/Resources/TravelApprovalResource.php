@@ -273,4 +273,9 @@ class TravelApprovalResource extends Resource
             ->whereIn('status', ['PENDING', 'FOR_REVISION'])
             ->count() ?: null;
     }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'danger';
+    }
 }

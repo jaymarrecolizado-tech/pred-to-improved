@@ -98,3 +98,11 @@ body,
     border-color: #2d4060;
     color: #9ec0ef;
 }
+
+.fi-sidebar-item-badge,
+.fi-sidebar-item-badge-ctn .fi-badge,
+.fi-topbar-database-notifications-btn .fi-badge,
+.fi-no-notification-unread-indicators .fi-badge {
+    background-color: var(--dict-danger) !important;
+    color: #fff !important;
+}
