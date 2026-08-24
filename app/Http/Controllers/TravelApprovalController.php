@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\TravelApproval;
+use App\Models\TravelOrder;
 use App\Services\TravelOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\URL;
 
 class TravelApprovalController extends Controller
 {
@@ -90,20 +90,11 @@ class TravelApprovalController extends Controller
 
         return view('approvals.reject-form', [
             'approval' => $approval,
-            'submitUrl' => URL::temporarySignedRoute(
-                'approvals.reject.submit',
-                now()->addDays(7),
-                ['approval' => $approval->id]
-            ),
         ]);
     }
 
     public function rejectSubmit(Request $request, TravelApproval $approval, TravelOrderService $service)
     {
-        if (!$request->hasValidSignature()) {
-            abort(403, 'Invalid or expired rejection link.');
-        }
-
         $request->validate([
             'reason' => 'required|string|min:5|max:500',
         ]);
@@ -131,6 +122,35 @@ class TravelApprovalController extends Controller
                 'error'
             );
         }
+    }
+
+    public function previewPdf(TravelOrder $order)
+    {
+        $user       = auth()->user();
+        $isOwner    = $order->user_id === $user->id;
+        $isAdmin    = $user->isAdmin();
+        $isTraveler = collect($order->travelers ?? [])
+            ->contains(fn($t) => ($t['name'] ?? '') === $user->name);
+
+        if (!$isOwner && !$isAdmin && !$isTraveler) {
+            abort(403, 'You do not have permission to view this travel order.');
+        }
+
+        $order->load([
+            'user',
+            'approvals.workflow',
+            'approvals.approver.employee',
+        ]);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView(
+            'pdf.TravelOrderCompleted',
+            ['travelOrder' => $order]
+        )->setPaper('a4', 'portrait');
+
+        return response($pdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="travel-order-' . ($order->to_code ?? $order->id) . '.pdf"',
+        ]);
     }
 
     protected function htmlResponse(string $title, string $message, string $type = 'info')
