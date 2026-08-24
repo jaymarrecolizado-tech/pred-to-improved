@@ -110,7 +110,7 @@ class TravelOrderResource extends Resource
                     ->collapsible(),
 
                 Section::make('Itinerary (Travel Locations)')
-                    ->description('Add one or more trip segments.')
+                    ->description('Add one or more trip segments. Segment dates are optional.')
                     ->icon('heroicon-o-map')
                     ->schema([
                         Repeater::make('travel_location')
@@ -178,7 +178,6 @@ class TravelOrderResource extends Resource
                             ->helperText('Select multiple if applicable'),
 
                         Select::make('vehicle')
-                            ->multiple()
                             ->label('Vehicle')
                             ->options(function (callable $get) {
                                 $sources = TravelSource::all();
@@ -192,13 +191,13 @@ class TravelOrderResource extends Resource
                                 }
                                 return $options;
                             })
-                            ->searchable()
-                            ->helperText('Select multiple if applicable'),
+                            ->searchable(),
 
                         Forms\Components\CheckboxList::make('other_funds')
                             ->label('Additional Travel Expenses')
                             ->options([
                                 'actual'        => 'Actual Expenses',
+                                'incidental'    => 'Incidental Expenses',
                                 'per_diem'      => 'Per Diem',
                                 'official_time' => 'Official Time',
                                 'no_claim'      => 'No claim',
@@ -268,7 +267,25 @@ class TravelOrderResource extends Resource
                                 ? 'Create travel workflow first...'
                                 : null)
                             ->required()
-                            ->columns(2),
+                            ->columns(2)
+                            ->live(),
+
+                        Forms\Components\Actions::make([
+                            Forms\Components\Actions\Action::make('refresh_workflows')
+                                ->label('Refresh Workflows')
+                                ->icon('heroicon-o-arrow-path')
+                                ->color('gray')
+                                ->action(function (Forms\Set $set) {
+
+                                    $set('workflow_steps', []);
+
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Workflows Refreshed')
+                                        ->success()
+                                        ->body('Workflow options have been reloaded. Please reselect your steps.')
+                                        ->send();
+                                }),
+                        ]),
                     ]),
 
                 Section::make('Attachments')
@@ -478,9 +495,8 @@ class TravelOrderResource extends Resource
                             $record->pdf_path &&
                             \Illuminate\Support\Facades\Storage::disk('public')->exists($record->pdf_path)
                         ) {
-                            $storedContent = \Illuminate\Support\Facades\Storage::disk('public')
-                                ->get($record->pdf_path);
-                            $fileName = basename($record->pdf_path);
+                            $storedContent = \Illuminate\Support\Facades\Storage::disk('public')->get($record->pdf_path);
+                            $fileName      = basename($record->pdf_path);
 
                             return response()->streamDownload(
                                 function () use ($storedContent) {
@@ -560,11 +576,10 @@ class TravelOrderResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'   => Pages\ListTravelOrders::route('/'),
-            'create'  => Pages\CreateTravelOrder::route('/create'),
-            'preview' => Pages\PreviewTravelOrder::route('/{record}/preview'),
-            'view'    => Pages\ViewTravelOrder::route('/{record}'),
-            'edit'    => Pages\EditTravelOrder::route('/{record}/edit'),
+            'index'  => Pages\ListTravelOrders::route('/'),
+            'create' => Pages\CreateTravelOrder::route('/create'),
+            'view'   => Pages\ViewTravelOrder::route('/{record}'),
+            'edit'   => Pages\EditTravelOrder::route('/{record}/edit'),
         ];
     }
 }
