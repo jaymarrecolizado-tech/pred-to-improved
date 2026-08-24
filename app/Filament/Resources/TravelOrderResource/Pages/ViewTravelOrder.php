@@ -25,7 +25,7 @@ class ViewTravelOrder extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            //View PDF
+            // View PDF inline
             
             Actions\Action::make('view_pdf')
                 ->label('View PDF')
@@ -35,36 +35,20 @@ class ViewTravelOrder extends ViewRecord
                     $this->record->user_id === auth()->id() ||
                     auth()->user()->isAdmin()
                 )
-                ->action(function () {
-                    $this->record->load([
-                        'user',
-                        'approvals.workflow',
-                        'approvals.approver.employee',
-                    ]);
+                ->modalHeading('Travel Order Preview')
+                ->modalContent(fn() =>
+                    view('filament.modals.pdf-preview', [
+                        'url' => route('travel-orders.preview-pdf', [
+                            'order' => $this->record->id,
+                        ]),
+                    ])
+                )
+                ->modalWidth('7xl')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Close'),
 
-                    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.TravelOrderCompleted', [
-                        'travelOrder' => $this->record,
-                    ])->setPaper('a4', 'portrait');
-
-                    $name      = $this->record->user->name ?? 'Unknown';
-                    $nameParts = explode(' ', $name);
-                    $lastName  = array_pop($nameParts);
-                    $firstName = implode('', array_map(
-                        fn($p) => ucfirst(strtolower($p)), $nameParts
-                    ));
-                    $date     = $this->record->start_date
-                        ? Carbon::parse($this->record->start_date)->format('m.d.y')
-                        : now()->format('m.d.y');
-                    $fileName = 'TO.' . $lastName . '.' . $firstName . '.' . $date . '.pdf';
-
-                    return response()->streamDownload(function () use ($pdf) {
-                        echo $pdf->output();
-                    }, $fileName);
-                }),
-
-            /*
-             * Download PDF — only for COMPLETED or CANCELLED orders.
-             */
+            // Download PDF - only for COMPLETED or CANCELLED orders.
+            
             Actions\Action::make('download_pdf')
                 ->label('Download PDF')
                 ->icon('heroicon-o-document-arrow-down')
@@ -112,366 +96,383 @@ class ViewTravelOrder extends ViewRecord
                     }, $fileName);
                 }),
 
-            //Super Admin - Change Approver on a pending approval step.
+            //Super Admin — All override actions grouped in one dropdown.
             
-            Actions\Action::make('change_approver')
-                ->label('Change Approver')
-                ->icon('heroicon-o-user-minus')
-                ->color('warning')
-                ->visible(fn() => auth()->user()->isSuperAdmin())
-                ->form([
-                    Forms\Components\Select::make('approval_id')
-                        ->label('Select Approval Step to Change')
-                        ->options(fn() =>
-                            $this->record->approvals()
-                                ->where('status', 'PENDING')
-                                ->with('approver')
-                                ->get()
-                                ->mapWithKeys(fn($a) => [
-                                    $a->id => 'Step ' . $a->workflow_step . ' — ' . $a->approver->name
-                                ])
-                        )
-                        ->required(),
+            Actions\ActionGroup::make([
 
-                    Forms\Components\Select::make('new_approver_id')
-                        ->label('New Approver')
-                        ->options(fn() =>
-                            User::whereIn('role', ['admin', 'super_admin', 'hr'])
-                                ->pluck('name', 'id')
-                        )
-                        ->searchable()
-                        ->required(),
+                Actions\Action::make('change_approver')
+                    ->label('Change Approver')
+                    ->icon('heroicon-o-user-minus')
+                    ->color('warning')
+                    ->form([
+                        Forms\Components\Select::make('approval_id')
+                            ->label('Select Pending Approval Step to Change')
+                            ->options(fn() =>
+                                $this->record->approvals()
+                                    ->where('status', 'PENDING')
+                                    ->with('approver')
+                                    ->get()
+                                    ->mapWithKeys(fn($a) => [
+                                        $a->id => 'Step ' . $a->workflow_step . ' — ' . $a->approver->name
+                                    ])
+                            )
+                            ->required(),
 
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason for Change')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $approval    = TravelApproval::find($data['approval_id']);
-                    $oldApprover = $approval->approver->name;
-                    $newApprover = User::find($data['new_approver_id']);
+                        Forms\Components\Select::make('new_approver_id')
+                            ->label('New Approver')
+                            ->options(fn() =>
+                                User::whereIn('role', ['admin', 'super_admin', 'hr'])
+                                    ->pluck('name', 'id')
+                            )
+                            ->searchable()
+                            ->required(),
 
-                    $approval->update(['approver_id' => $newApprover->id]);
+                        Forms\Components\Textarea::make('notes')
+                            ->label('Reason for Change')
+                            ->required()
+                            ->rows(2),
+                    ])
+                    ->action(function (array $data) {
+                        $approval    = TravelApproval::find($data['approval_id']);
+                        $oldApprover = $approval->approver->name;
+                        $newApprover = User::find($data['new_approver_id']);
 
-                    AuditLog::logOverride(
-                        action:   'CHANGE_APPROVER',
-                        model:    'TravelApproval',
-                        modelId:  $approval->id,
-                        oldValue: ['approver' => $oldApprover],
-                        newValue: ['approver' => $newApprover->name],
-                        notes:    $data['notes']
-                    );
+                        $approval->update(['approver_id' => $newApprover->id]);
 
-                    Notification::make()
-                        ->title('Approver Changed')
-                        ->success()
-                        ->body('Step ' . $approval->workflow_step . ' now assigned to ' . $newApprover->name)
-                        ->send();
+                        AuditLog::logOverride(
+                            action:   'CHANGE_APPROVER',
+                            model:    'TravelApproval',
+                            modelId:  $approval->id,
+                            oldValue: ['approver' => $oldApprover],
+                            newValue: ['approver'  => $newApprover->name],
+                            notes:    $data['notes']
+                        );
 
-                    $this->refreshFormData(['status']);
-                }),
+                        Notification::make()
+                            ->title('Approver Changed')
+                            ->success()
+                            ->body('Step ' . $approval->workflow_step . ' now assigned to ' . $newApprover->name)
+                            ->send();
 
-            //Super Admin - Add a missing approval step.
-            
-            Actions\Action::make('add_approval_step')
-                ->label('Add Approval Step')
-                ->icon('heroicon-o-plus-circle')
-                ->color('info')
-                ->visible(fn() => auth()->user()->isSuperAdmin())
-                ->form([
-                    Forms\Components\Select::make('approver_id')
-                        ->label('Approver')
-                        ->options(fn() =>
-                            User::whereIn('role', ['admin', 'super_admin', 'hr'])
-                                ->pluck('name', 'id')
-                        )
-                        ->searchable()
-                        ->required(),
+                        $this->refreshFormData(['status']);
+                    }),
 
-                    Forms\Components\Select::make('workflow_id')
-                        ->label('Approval Role')
-                        ->options([
-                            6   => 'TOD Chief Recommend (Bariuan)',
-                            12  => 'TOD Chief Recommend (Magdalena)',
-                            37  => 'ARD Initial (Laverinto)',
-                            99  => 'Admin Chief Initial (Mina)',
-                            407 => 'Admin Chief Initial (Jemar)',
-                            543 => 'Regional Director Approve (Pinky)',
-                            550 => 'HR TO Code Provider',
-                        ])
-                        ->required(),
+                Actions\Action::make('add_approval_step')
+                    ->label('Add Approval Step')
+                    ->icon('heroicon-o-plus-circle')
+                    ->color('info')
+                    ->form(function () {
+                        $existingWorkflowSteps = $this->record->approvals()
+                            ->pluck('workflow_step')
+                            ->toArray();
 
-                    Forms\Components\TextInput::make('position_snapshot')
-                        ->label('Position/Designation to show on PDF')
-                        ->required(),
+                        $availableSteps = TravelWorkflow::where('user_id', $this->record->user_id)
+                            ->whereNotIn('id', $existingWorkflowSteps)
+                            ->with('approver')
+                            ->get()
+                            ->mapWithKeys(fn($w) => [
+                                $w->id => 'Step ' . $w->workflow_step . ' — ' . $w->approver->name .
+                                          ($w->to_approve       ? ' [RD Approve]'     : '') .
+                                          ($w->to_recommend     ? ' [Recommend]'       : '') .
+                                          ($w->to_ard_initial   ? ' [ARD Initial]'     : '') .
+                                          ($w->to_admin_initial ? ' [Admin Initial]'   : '') .
+                                          ($w->to_code_provider ? ' [HR TO Code]'      : '') .
+                                          ($w->to_oic_rd        ? ' [OIC RD Approve]'  : ''),
+                            ]);
 
-                    Forms\Components\TextInput::make('to_code')
-                        ->label('TO Code (if assigning)')
-                        ->default(fn() => $this->record->to_code ?? ''),
+                        return [
+                            Forms\Components\Select::make('workflow_id')
+                                ->label('Select Missing Approval Step')
+                                ->options($availableSteps)
+                                ->required()
+                                ->reactive(),
 
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason for Adding Step')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $approver = User::find($data['approver_id']);
+                            Forms\Components\TextInput::make('position_snapshot')
+                                ->label('Position/Designation on PDF (optional)')
+                                ->helperText('Leave blank for HR or initial-only steps that do not need a designation.')
+                                ->nullable(),
 
-                    TravelApproval::create([
-                        'travel_order_id'             => $this->record->id,
-                        'user_id'                     => $this->record->user_id,
-                        'approver_id'                 => $approver->id,
-                        'workflow_step'               => $data['workflow_id'],
-                        'status'                      => 'APPROVED',
-                        'approved_at'                 => now(),
-                        'to_code'                     => $data['to_code'] ?: null,
-                        'approver_name_snapshot'      => $approver->name,
-                        'approver_position_snapshot'  => $data['position_snapshot'],
-                        'approver_signature_snapshot' => $approver->signature,
-                    ]);
+                            Forms\Components\TextInput::make('to_code')
+                                ->label('TO Code')
+                                ->default(fn() => $this->record->to_code ?? '')
+                                ->helperText('Leave as is if TO code is already assigned.'),
 
-                    AuditLog::logOverride(
-                        action:   'ADD_APPROVAL_STEP',
-                        model:    'TravelOrder',
-                        modelId:  $this->record->id,
-                        oldValue: [],
-                        newValue: [
-                            'approver'  => $approver->name,
-                            'position'  => $data['position_snapshot'],
-                            'to_code'   => $data['to_code'],
-                        ],
-                        notes: $data['notes']
-                    );
+                            Forms\Components\Textarea::make('notes')
+                                ->label('Reason for Adding Step')
+                                ->required()
+                                ->rows(2),
+                        ];
+                    })
+                    ->action(function (array $data) {
+                        $workflow = TravelWorkflow::find($data['workflow_id']);
+                        $approver = $workflow->approver;
 
-                    // Clear stored PDF so it regenerates with new approval
-                    $this->record->update(['pdf_path' => null]);
+                        $position = $data['position_snapshot'] ?? null;
+                        if (!$position) {
+                            if ($workflow->to_code_provider) {
+                                $position = 'HR Officer';
+                            } elseif ($workflow->to_approve) {
+                                $position = 'Regional Director';
+                            } elseif ($workflow->to_oic_rd) {
+                                $position = 'OIC, Regional Director';
+                            }
+                        }
 
-                    Notification::make()
-                        ->title('Approval Step Added')
-                        ->success()
-                        ->body($approver->name . ' added as approver.')
-                        ->send();
+                        TravelApproval::create([
+                            'travel_order_id'             => $this->record->id,
+                            'user_id'                     => $this->record->user_id,
+                            'approver_id'                 => $approver->id,
+                            'workflow_step'               => $workflow->id,
+                            'status'                      => 'APPROVED',
+                            'approved_at'                 => now(),
+                            'to_code'                     => $data['to_code'] ?: null,
+                            'approver_name_snapshot'      => $approver->name,
+                            'approver_position_snapshot'  => $position,
+                            'approver_signature_snapshot' => $approver->signature,
+                        ]);
 
-                    $this->refreshFormData(['status']);
-                }),
+                        $this->record->update(['pdf_path' => null]);
 
-            //Super Admin - Update position snapshot on a completed approval.
-            
-            Actions\Action::make('update_snapshot')
-                ->label('Update Position Snapshot')
-                ->icon('heroicon-o-pencil-square')
-                ->color('gray')
-                ->visible(fn() => auth()->user()->isSuperAdmin())
-                ->form([
-                    Forms\Components\Select::make('approval_id')
-                        ->label('Select Approval Step')
-                        ->options(fn() =>
-                            $this->record->approvals()
-                                ->with('approver')
-                                ->get()
-                                ->mapWithKeys(fn($a) => [
-                                    $a->id => 'Step ' . $a->workflow_step .
-                                              ' — ' . $a->approver->name .
-                                              ' [' . ($a->approver_position_snapshot ?? 'No snapshot') . ']'
-                                ])
-                        )
-                        ->required(),
+                        AuditLog::logOverride(
+                            action:   'ADD_APPROVAL_STEP',
+                            model:    'TravelOrder',
+                            modelId:  $this->record->id,
+                            oldValue: [],
+                            newValue: [
+                                'approver' => $approver->name,
+                                'position' => $position,
+                                'to_code'  => $data['to_code'],
+                            ],
+                            notes: $data['notes']
+                        );
 
-                    Forms\Components\TextInput::make('new_position')
-                        ->label('New Position/Designation')
-                        ->required(),
+                        Notification::make()
+                            ->title('Approval Step Added')
+                            ->success()
+                            ->body($approver->name . ' added as approver.')
+                            ->send();
 
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason for Change')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $approval    = TravelApproval::find($data['approval_id']);
-                    $oldPosition = $approval->approver_position_snapshot;
+                        $this->refreshFormData(['status']);
+                    }),
 
-                    $approval->update([
-                        'approver_position_snapshot' => $data['new_position'],
-                    ]);
+                Actions\Action::make('update_snapshot')
+                    ->label('Update Position Snapshot')
+                    ->icon('heroicon-o-pencil-square')
+                    ->color('gray')
+                    ->form([
+                        Forms\Components\Select::make('approval_id')
+                            ->label('Select Approval Step to Update')
+                            ->options(fn() =>
+                                $this->record->approvals()
+                                    ->with('approver')
+                                    ->get()
+                                    ->mapWithKeys(fn($a) => [
+                                        $a->id => 'Step ' . $a->workflow_step .
+                                                  ' — ' . $a->approver->name .
+                                                  ' [Current: ' . ($a->approver_position_snapshot ?? 'None') . ']'
+                                    ])
+                            )
+                            ->required(),
 
-                    // Clear stored PDF so it regenerates with new position
-                    $this->record->update(['pdf_path' => null]);
+                        Forms\Components\TextInput::make('new_position')
+                            ->label('New Position/Designation')
+                            ->helperText('This is what will print on the PDF for this approver.')
+                            ->required(),
 
-                    AuditLog::logOverride(
-                        action:   'UPDATE_SNAPSHOT',
-                        model:    'TravelApproval',
-                        modelId:  $approval->id,
-                        oldValue: ['position' => $oldPosition],
-                        newValue: ['position'  => $data['new_position']],
-                        notes:    $data['notes']
-                    );
+                        Forms\Components\Textarea::make('notes')
+                            ->label('Reason for Change')
+                            ->required()
+                            ->rows(2),
+                    ])
+                    ->action(function (array $data) {
+                        $approval    = TravelApproval::find($data['approval_id']);
+                        $oldPosition = $approval->approver_position_snapshot;
 
-                    Notification::make()
-                        ->title('Position Snapshot Updated')
-                        ->success()
-                        ->send();
-                }),
+                        $approval->update([
+                            'approver_position_snapshot' => $data['new_position'],
+                        ]);
 
-            //Super Admin - Assign or change TO code.
-            
-            Actions\Action::make('assign_to_code')
-                ->label('Assign TO Code')
-                ->icon('heroicon-o-hashtag')
-                ->color('info')
-                ->visible(fn() => auth()->user()->isSuperAdmin())
-                ->form([
-                    Forms\Components\TextInput::make('to_code')
-                        ->label('TO Code')
-                        ->default(fn() => $this->record->to_code ?? '')
-                        ->required(),
+                        $this->record->update(['pdf_path' => null]);
 
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $oldCode = $this->record->to_code;
+                        AuditLog::logOverride(
+                            action:   'UPDATE_SNAPSHOT',
+                            model:    'TravelApproval',
+                            modelId:  $approval->id,
+                            oldValue: ['position' => $oldPosition],
+                            newValue: ['position'  => $data['new_position']],
+                            notes:    $data['notes']
+                        );
 
-                    $this->record->update([
-                        'to_code'  => $data['to_code'],
-                        'pdf_path' => null,
-                    ]);
+                        Notification::make()
+                            ->title('Position Snapshot Updated')
+                            ->success()
+                            ->send();
+                    }),
 
-                    TravelApproval::where('travel_order_id', $this->record->id)
-                        ->update(['to_code' => $data['to_code']]);
+                Actions\Action::make('assign_to_code')
+                    ->label('Assign TO Code')
+                    ->icon('heroicon-o-hashtag')
+                    ->color('info')
+                    ->form(function () {
+                        $lastCode = TravelOrder::whereNotNull('to_code')
+                            ->orderByRaw('CAST(SUBSTRING_INDEX(to_code, "-", -1) AS UNSIGNED) DESC')
+                            ->value('to_code');
 
-                    AuditLog::logOverride(
-                        action:   'ASSIGN_TO_CODE',
-                        model:    'TravelOrder',
-                        modelId:  $this->record->id,
-                        oldValue: ['to_code' => $oldCode],
-                        newValue: ['to_code'  => $data['to_code']],
-                        notes:    $data['notes']
-                    );
+                        return [
+                            Forms\Components\Placeholder::make('last_code')
+                                ->label('Last Used TO Code')
+                                ->content($lastCode ?? 'None yet'),
 
-                    Notification::make()
-                        ->title('TO Code Assigned')
-                        ->success()
-                        ->body('TO Code set to ' . $data['to_code'])
-                        ->send();
+                            Forms\Components\TextInput::make('to_code')
+                                ->label('New TO Code')
+                                ->default(fn() => $this->record->to_code ?? '')
+                                ->helperText('Format: YYYY-MM-XXX (e.g. 2026-08-399)')
+                                ->required(),
 
-                    $this->refreshFormData(['status']);
-                }),
+                            Forms\Components\Textarea::make('notes')
+                                ->label('Reason')
+                                ->required()
+                                ->rows(2),
+                        ];
+                    })
+                    ->action(function (array $data) {
+                        $oldCode = $this->record->to_code;
 
-            /*
-             * Super Admin — Clear stored PDF to force regeneration.
-             */
-            Actions\Action::make('clear_pdf')
-                ->label('Clear Stored PDF')
-                ->icon('heroicon-o-trash')
-                ->color('danger')
-                ->visible(fn() =>
-                    auth()->user()->isSuperAdmin() &&
-                    $this->record->pdf_path
-                )
-                ->requiresConfirmation()
-                ->modalHeading('Clear Stored PDF')
-                ->modalDescription('The stored PDF will be deleted. Next download will regenerate it with current data.')
-                ->form([
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason for Clearing PDF')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $oldPath = $this->record->pdf_path;
+                        $this->record->update([
+                            'to_code'  => $data['to_code'],
+                            'pdf_path' => null,
+                        ]);
 
-                    $this->record->update(['pdf_path' => null]);
+                        TravelApproval::where('travel_order_id', $this->record->id)
+                            ->update(['to_code' => $data['to_code']]);
 
-                    AuditLog::logOverride(
-                        action:   'CLEAR_PDF',
-                        model:    'TravelOrder',
-                        modelId:  $this->record->id,
-                        oldValue: ['pdf_path' => $oldPath],
-                        newValue: ['pdf_path'  => null],
-                        notes:    $data['notes']
-                    );
+                        AuditLog::logOverride(
+                            action:   'ASSIGN_TO_CODE',
+                            model:    'TravelOrder',
+                            modelId:  $this->record->id,
+                            oldValue: ['to_code' => $oldCode],
+                            newValue: ['to_code'  => $data['to_code']],
+                            notes:    $data['notes']
+                        );
 
-                    Notification::make()
-                        ->title('Stored PDF Cleared')
-                        ->success()
-                        ->body('Next download will regenerate the PDF with current data.')
-                        ->send();
-                }),
+                        Notification::make()
+                            ->title('TO Code Assigned')
+                            ->success()
+                            ->body('TO Code set to ' . $data['to_code'])
+                            ->send();
 
-            /*
-             * Super Admin — Override TO contents (travelers, dates, segments, purpose).
-             */
-            Actions\Action::make('override_contents')
-                ->label('Override TO Contents')
-                ->icon('heroicon-o-wrench-screwdriver')
-                ->color('danger')
-                ->visible(fn() => auth()->user()->isSuperAdmin())
-                ->form([
-                    Forms\Components\DatePicker::make('start_date')
-                        ->label('Overall Start Date')
-                        ->native(false)
-                        ->default(fn() => $this->record->start_date),
+                        $this->refreshFormData(['status']);
+                    }),
 
-                    Forms\Components\DatePicker::make('end_date')
-                        ->label('Overall End Date')
-                        ->native(false)
-                        ->default(fn() => $this->record->end_date),
+                Actions\Action::make('clear_pdf')
+                    ->label('Clear Stored PDF')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn() => (bool) $this->record->pdf_path)
+                    ->requiresConfirmation()
+                    ->modalHeading('Clear Stored PDF')
+                    ->modalDescription('The stored PDF will be deleted. Next download will regenerate it with current data.')
+                    ->form([
+                        Forms\Components\Textarea::make('notes')
+                            ->label('Reason for Clearing PDF')
+                            ->required()
+                            ->rows(2),
+                    ])
+                    ->action(function (array $data) {
+                        $oldPath = $this->record->pdf_path;
 
-                    Forms\Components\Textarea::make('purpose')
-                        ->label('Purpose')
-                        ->rows(3)
-                        ->default(fn() => $this->record->purpose),
+                        $this->record->update(['pdf_path' => null]);
 
-                    Forms\Components\Textarea::make('remarks')
-                        ->label('Remarks')
-                        ->rows(2)
-                        ->default(fn() => $this->record->remarks),
+                        AuditLog::logOverride(
+                            action:   'CLEAR_PDF',
+                            model:    'TravelOrder',
+                            modelId:  $this->record->id,
+                            oldValue: ['pdf_path' => $oldPath],
+                            newValue: ['pdf_path'  => null],
+                            notes:    $data['notes']
+                        );
 
-                    Forms\Components\Textarea::make('notes')
-                        ->label('Reason for Override')
-                        ->required()
-                        ->rows(2),
-                ])
-                ->action(function (array $data) {
-                    $oldValues = [
-                        'start_date' => $this->record->start_date,
-                        'end_date'   => $this->record->end_date,
-                        'purpose'    => $this->record->purpose,
-                        'remarks'    => $this->record->remarks,
-                    ];
+                        Notification::make()
+                            ->title('Stored PDF Cleared')
+                            ->success()
+                            ->body('Next download will regenerate the PDF with current data.')
+                            ->send();
+                    }),
 
-                    $this->record->update([
-                        'start_date' => $data['start_date'],
-                        'end_date'   => $data['end_date'],
-                        'purpose'    => $data['purpose'],
-                        'remarks'    => $data['remarks'],
-                        'pdf_path'   => null,
-                    ]);
+                Actions\Action::make('override_contents')
+                    ->label('Override TO Contents')
+                    ->icon('heroicon-o-wrench-screwdriver')
+                    ->color('danger')
+                    ->form([
+                        Forms\Components\DatePicker::make('start_date')
+                            ->label('Overall Start Date')
+                            ->native(false)
+                            ->default(fn() => $this->record->start_date),
 
-                    AuditLog::logOverride(
-                        action:   'OVERRIDE_TO_CONTENTS',
-                        model:    'TravelOrder',
-                        modelId:  $this->record->id,
-                        oldValue: $oldValues,
-                        newValue: [
+                        Forms\Components\DatePicker::make('end_date')
+                            ->label('Overall End Date')
+                            ->native(false)
+                            ->default(fn() => $this->record->end_date),
+
+                        Forms\Components\Textarea::make('purpose')
+                            ->label('Purpose')
+                            ->rows(3)
+                            ->default(fn() => $this->record->purpose),
+
+                        Forms\Components\Textarea::make('remarks')
+                            ->label('Remarks')
+                            ->rows(2)
+                            ->default(fn() => $this->record->remarks),
+
+                        Forms\Components\Textarea::make('notes')
+                            ->label('Reason for Override')
+                            ->required()
+                            ->rows(2),
+                    ])
+                    ->action(function (array $data) {
+                        $oldValues = [
+                            'start_date' => $this->record->start_date,
+                            'end_date'   => $this->record->end_date,
+                            'purpose'    => $this->record->purpose,
+                            'remarks'    => $this->record->remarks,
+                        ];
+
+                        $this->record->update([
                             'start_date' => $data['start_date'],
                             'end_date'   => $data['end_date'],
                             'purpose'    => $data['purpose'],
                             'remarks'    => $data['remarks'],
-                        ],
-                        notes: $data['notes']
-                    );
+                            'pdf_path'   => null,
+                        ]);
 
-                    Notification::make()
-                        ->title('Travel Order Updated')
-                        ->success()
-                        ->send();
+                        AuditLog::logOverride(
+                            action:   'OVERRIDE_TO_CONTENTS',
+                            model:    'TravelOrder',
+                            modelId:  $this->record->id,
+                            oldValue: $oldValues,
+                            newValue: [
+                                'start_date' => $data['start_date'],
+                                'end_date'   => $data['end_date'],
+                                'purpose'    => $data['purpose'],
+                                'remarks'    => $data['remarks'],
+                            ],
+                            notes: $data['notes']
+                        );
 
-                    $this->refreshFormData(['status']);
-                }),
+                        Notification::make()
+                            ->title('Travel Order Updated')
+                            ->success()
+                            ->send();
+
+                        $this->refreshFormData(['status']);
+                    }),
+
+            ])
+            ->label('Admin Actions')
+            ->icon('heroicon-o-wrench-screwdriver')
+            ->color('warning')
+            ->button()
+            ->visible(fn() => auth()->user()->isSuperAdmin()),
 
             Actions\Action::make('resubmit')
                 ->label('Resubmit for Approval')
