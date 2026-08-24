@@ -27,6 +27,8 @@ class SecurityHeaders
          * Restricts which sources can load scripts, styles, and other assets.
          * Allows Filament assets, ui-avatars.com for profile photos,
          * and inline styles/scripts required by Livewire and Filament.
+         * frame-ancestors 'self' allows the PDF preview iframe to work
+         * within the same domain.
          */
         $response->headers->set(
             'Content-Security-Policy',
@@ -37,7 +39,7 @@ class SecurityHeaders
                 "img-src 'self' data: blob: https://ui-avatars.com",
                 "font-src 'self' data:",
                 "connect-src 'self'",
-                "frame-ancestors 'none'",
+                "frame-ancestors 'self'",
                 "base-uri 'self'",
                 "form-action 'self'",
             ])
@@ -45,9 +47,10 @@ class SecurityHeaders
 
         /*
          * X-Frame-Options
-         * Prevents the site from being embedded in iframes (clickjacking protection).
+         * SAMEORIGIN allows iframes from the same domain —
+         * required for the inline PDF preview modal.
          */
-        $response->headers->set('X-Frame-Options', 'DENY');
+        $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
 
         /*
          * X-Content-Type-Options
