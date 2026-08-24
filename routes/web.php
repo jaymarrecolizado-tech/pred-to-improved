@@ -22,3 +22,7 @@ Route::get('/approvals/{approval}/reject-form', [TravelApprovalController::class
 Route::post('/approvals/{approval}/reject-form', [TravelApprovalController::class, 'rejectSubmit'])
     ->name('approvals.reject.submit')
     ->middleware('signed');
+
+Route::get('/travel-orders/{order}/preview-pdf', [TravelApprovalController::class, 'previewPdf'])
+    ->name('travel-orders.preview-pdf')
+    ->middleware(['auth']);
