@@ -79,10 +79,6 @@ class TravelApprovalResource extends Resource
                             ->rows(3)
                             ->columnSpanFull(),
 
-                        /*
-                         * HR-only field: allows manual override of the TO code
-                         * during the approval step if needed for corrections.
-                         */
                         Forms\Components\TextInput::make('admin_to_override')
                             ->label('HR Override TO Code')
                             ->visible(fn() => Auth::user()->isHR())
@@ -179,10 +175,6 @@ class TravelApprovalResource extends Resource
                     ] : [])
                     ->action(function (TravelApproval $record, array $data) {
 
-                        /*
-                         * If HR provides a manual TO code override,
-                         * update both the travel order and the approval record.
-                         */
                         if (!empty($data['admin_to_override']) && Auth::user()->isHR()) {
                             $record->travelOrder->update([
                                 'to_code' => $data['admin_to_override'],
@@ -253,6 +245,22 @@ class TravelApprovalResource extends Resource
                             ->body('The travel order has been sent back to the requestor for revision.')
                             ->send();
                     }),
+
+                Tables\Actions\Action::make('view_pdf')
+                    ->label('View PDF')
+                    ->icon('heroicon-o-eye')
+                    ->color('gray')
+                    ->modalHeading('Travel Order Preview')
+                    ->modalContent(fn(TravelApproval $record) =>
+                        view('filament.modals.pdf-preview', [
+                            'url' => route('travel-orders.preview-pdf', [
+                                'order' => $record->travel_order_id,
+                            ]),
+                        ])
+                    )
+                    ->modalWidth('7xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close'),
 
                 Tables\Actions\ViewAction::make(),
             ])
